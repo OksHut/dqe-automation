@@ -30,7 +30,7 @@ pipeline {
                         
                         # 3. Примусове встановлення критичних бібліотек
                         # (Вирішує помилку 'No module named pytest')
-                        pip install pytest pytest-html pandas pyarrow sqlalchemy psycopg2-binary
+                        pip install pytest pytest-html pandas pyarrow sqlalchemy psycopg2-binary python-dotenv
                         
                         # 4. Встановлення решти залежностей з файлу
                         if [ -f requirements.txt ]; then
