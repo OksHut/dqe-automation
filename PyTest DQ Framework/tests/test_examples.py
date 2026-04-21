@@ -17,7 +17,7 @@ def source_data(db_connector):
 def target_data(parquet_tool):
     """Отримуємо дані з Parquet файлу"""
     
-    target_path = 'src/data/facility_visits.parquet'
+    target_path = '../src/data/facility_name_min_time_spent_per_visit_date.parquet'
     return parquet_tool.read_file(target_path)
 
 @pytest.mark.example
