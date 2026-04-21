@@ -15,6 +15,10 @@ pipeline {
         
         // Додаємо лапки навколо шляху з пробілами
         PYTHONPATH = "${env.WORKSPACE}/PyTest DQ Framework"
+        
+        // Шлях до папки, де лежать ваші папки з паркетами
+        PARQUET_BASE_PATH = '/parquet_data' 
+
     }
 
     stages {

@@ -44,10 +44,12 @@ def db_connector(request):
         password=password
     )
 
-@pytest.fixture(scope="session")
-def parquet_tool():
-    """Фікстура для читання Parquet файлів"""
-    return ParquetReader()
+@pytest.fixture(scope='module')
+def target_data(parquet_tool):
+    """Отримуємо дані з папки паркетів"""
+    # Назва папки, яка лежить всередині /parquet_data/
+    folder_name = 'facility_name_min_time_spent_per_visit_date'
+    return parquet_tool.read_file(folder_name)
 
 @pytest.fixture(scope="session")
 def dq_library():

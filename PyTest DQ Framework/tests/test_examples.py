@@ -15,16 +15,21 @@ def source_data(db_connector):
 
 @pytest.fixture(scope='module')
 def target_data(parquet_tool):
-    """Отримуємо дані з Parquet файлу"""
-    
-    target_path = '../src/data/facility_name_min_time_spent_per_visit_date.parquet'
-    return parquet_tool.read_file(target_path)
+    """Отримуємо дані з Parquet папки"""
+    # ФІКС 1: Передаємо тільки назву папки. 
+    # parquet_tool.read_file сам додасть базовий шлях /parquet_data/
+    folder_name = 'facility_name_min_time_spent_per_visit_date'
+    return parquet_tool.read_file(folder_name)
 
+# ФІКС 2: Додаємо маркер parquet_data, щоб команда в Jenkins 
+# (pytest -m "parquet_data or example") бачила ці тести
+@pytest.mark.parquet_data
 @pytest.mark.example
 def test_check_dataset_is_not_empty(target_data, dq_library):
     """Перевірка, що завантажений файл не порожній"""
     dq_library.check_dataset_is_not_empty(target_data)
 
+@pytest.mark.parquet_data
 @pytest.mark.example
 def test_check_count(source_data, target_data, dq_library):
     """Звірка кількості записів між БД та файлом"""
