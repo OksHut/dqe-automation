@@ -2,60 +2,82 @@ pipeline {
     agent any
 
     environment {
+        // Отримуємо доступи з Jenkins Credentials (ID має бути саме таким)
         POSTGRES_SECRET = credentials('jenkins-postgres-credentials')
+        
+        // Налаштування для внутрішньої мережі Jenkins (tafordqenetwork)
         DB_HOST = 'postgres' 
-        DB_NAME = 'mydatabase'
+        DB_PORT = '5432'
+        DB_NAME = 'core_db'
         DB_USER = "${env.POSTGRES_SECRET_USR}"
         DB_PASS = "${env.POSTGRES_SECRET_PSW}"
-        PYTHONPATH = "${env.WORKSPACE}"
+        
+        // Встановлюємо шлях, щоб Python бачив твої модулі
+        PYTHONPATH = "${env.WORKSPACE}/PyTest DQ Framework"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // 1. Jenkins затягує твій репозиторій (разом з папкою src/data/ та тестами)
-                checkout scm 
+                // Затягуємо код з GitHub
+                checkout scm
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh '''
-                    python3 -m venv venv
-                    . venv/bin/activate
-                    pip install -r requirements.txt
-                '''
+                // Переходимо в папку проекту, де лежить requirements.txt
+                dir('PyTest DQ Framework') {
+                    sh '''
+                        python3 -m venv venv
+                        . venv/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                    '''
+                }
             }
         }
 
-        stage('Run Data Quality Tests') {
+        stage('Run DQ Tests') {
             steps {
-                sh '''
-                    . venv/bin/activate
-                    # 2. Запускаємо тести, які ти розробила у VS Code
-                    # Ми передаємо параметри бази через аргументи командного рядка
-                    pytest tests/ -m "example or parquet_data" \
-                    --db_host="${DB_HOST}" \
-                    --db_port="5432" \
-                    --db_name="${DB_NAME}" \
-                    --db_user="${DB_USER}" \
-                    --db_password="${DB_PASS}" \
-                    --html=reports/dq_report.html \
-                    --self-contained-html
-                '''
+                // Переходимо в папку проекту, щоб pytest бачив папки tests та src/data
+                dir('PyTest DQ Framework') {
+                    sh '''
+                        . venv/bin/activate
+                        # Запускаємо тести з аргументами для бази та звітом
+                        # Використовуємо маркери, які ти додала у VS Code
+                        pytest tests -m "parquet_data or example" \
+                        --db_host="${DB_HOST}" \
+                        --db_port="${DB_PORT}" \
+                        --db_name="${DB_NAME}" \
+                        --db_user="${DB_USER}" \
+                        --db_password="${DB_PASS}" \
+                        --html=reports/dq_report.html \
+                        --self-contained-html
+                    '''
+                }
             }
         }
     }
 
     post {
         always {
-            // 3. Зберігаємо звіт, щоб ти могла його відкрити в Jenkins
-            archiveArtifacts artifacts: 'reports/*.html'
-            publishHTML([
-                reportDir: 'reports',
-                reportFiles: 'dq_report.html',
-                reportName: 'Final DQ Report'
-            ])
+            // Архівуємо звіт та публікуємо його в інтерфейсі Jenkins
+            dir('PyTest DQ Framework') {
+                archiveArtifacts artifacts: 'reports/*.html', fingerprint: true
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'dq_report.html',
+                    reportName: 'Data Quality Report'
+                ])
+            }
+        }
+        failure {
+            echo '❌ Data Quality tests failed! Please check the HTML report.'
         }
     }
 }
