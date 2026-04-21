@@ -2,17 +2,16 @@ pipeline {
     agent any
 
     environment {
-        // Отримуємо кренденціали (переконайся, що ID збігається в Jenkins)
+        // Переконайся, що в Jenkins додано Credentials з таким ID
         POSTGRES_SECRET = credentials('jenkins-postgres-credentials')
         
-        // Налаштування для бази даних
+        // НАЛАШТУВАННЯ БАЗИ (тут ми вказали mydatabase)
         DB_HOST = 'postgres' 
         DB_PORT = '5432'
         DB_NAME = 'mydatabase' 
         DB_USER = "${env.POSTGRES_SECRET_USR}"
         DB_PASS = "${env.POSTGRES_SECRET_PSW}"
         
-        // Шлях до проекту для Python
         PYTHONPATH = "${env.WORKSPACE}/PyTest DQ Framework"
     }
 
@@ -21,35 +20,24 @@ pipeline {
             steps {
                 dir('PyTest DQ Framework') {
                     sh '''
-                        # 1. Створення та активація віртуального середовища
+                        # 1. Створення та активація venv
                         python3 -m venv venv
                         . venv/bin/activate
                         
-                        # 2. Оновлення інструментів
+                        # 2. Оновлення та встановлення всіх бібліотек (включаючи dotenv)
                         pip install --upgrade pip
-                        
-                        # 3. Примусове встановлення критичних бібліотек
-                        # (Вирішує помилку 'No module named pytest')
                         pip install pytest pytest-html pandas pyarrow sqlalchemy psycopg2-binary python-dotenv
                         
-                        # 4. Встановлення решти залежностей з файлу
+                        # 3. Встановлення з requirements.txt, якщо він є
                         if [ -f requirements.txt ]; then
                             pip install -r requirements.txt
                         fi
                         
-                        # 5. Діагностика (побачимо в логах список встановленого)
-                        pip list
-                        
-                        # 6. Підготовка папки звітів
+                        # 4. Створення папки для звіту
                         mkdir -p reports
                         
-                        # 7. Запуск тестів
+                        # 5. 
                         python3 -m pytest tests -m "parquet_data or example" \
-                        --db_host="${DB_HOST}" \
-                        --db_port="${DB_PORT}" \
-                        --db_name="${DB_NAME}" \
-                        --db_user="${DB_USER}" \
-                        --db_password="${DB_PASS}" \
                         --html=reports/dq_report.html \
                         --self-contained-html
                     '''
@@ -61,13 +49,9 @@ pipeline {
     post {
         always {
             dir('PyTest DQ Framework') {
-                // Зберігаємо звіт як артефакт
                 archiveArtifacts artifacts: 'reports/*.html', allowEmptyArchive: true
-                echo "Тести завершені. Звіт збережено в Artifacts."
+                echo "Звіт згенеровано. Перевір вкладку Artifacts у Jenkins."
             }
-        }
-        failure {
-            echo "❌ Білд впав. Перевір Console Output на наявність помилок інсталяції або зв'язку з БД."
         }
     }
 }
