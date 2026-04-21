@@ -5,7 +5,7 @@ pipeline {
         // Переконайся, що в Jenkins додано Credentials з таким ID
         POSTGRES_SECRET = credentials('jenkins-postgres-credentials')
         
-        // НАЛАШТУВАННЯ БАЗИ (тут ми вказали mydatabase)
+        // НАЛАШТУВАННЯ БАЗИ
         DB_HOST = 'postgres' 
         DB_PORT = '5432'
         DB_NAME = 'mydatabase' 

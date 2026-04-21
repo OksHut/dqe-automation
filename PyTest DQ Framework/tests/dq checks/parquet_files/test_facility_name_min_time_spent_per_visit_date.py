@@ -11,8 +11,7 @@ import pytest
 def test_facility_min_duration_validation(db_connector, dq_library):
     
     
-    # --- ARRANGE (Підготовка) ---
-    # Бізнес-поріг згідно з вимогами
+  
     MIN_DURATION_LIMIT = 5
     
    
