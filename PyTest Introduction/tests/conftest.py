@@ -4,6 +4,8 @@ import csv
 import os
 
 # Fixture to read the CSV file
+
+
 @pytest.fixture(scope="session")
 def csv_reader():
     """fixture for csv reading """
@@ -14,8 +16,9 @@ def csv_reader():
             return list(csv.DictReader(file))
     return _read_file
 
-
 # Fixture to validate the schema of the file
+
+
 @pytest.fixture(scope="session")
 def schema_validator():
     """fixture for validation """
@@ -26,6 +29,8 @@ def schema_validator():
     return _validate
 
 # additional function
+
+
 @pytest.fixture(scope="session")
 def csv_path():
     """
@@ -35,22 +40,15 @@ def csv_path():
     return os.path.join(base_path, 'src', 'data', 'data.csv')
 
 # Pytest hook to mark unmarked tests with a custom mark
+
+
 def pytest_collection_modifyitems(config, items):
     """
     adds unmarked if test is not marked
     """
     for item in items:
         # go through all markers of the test and check if there is a marker other than 'parametrize'
-        custom_markers = [mark for mark in item.iter_markers() if mark.name != "parametrize"]
+        custom_markers = [
+            mark for mark in item.iter_markers() if mark.name != "parametrize"]
         if not custom_markers:
             item.add_marker(pytest.mark.unmarked)
-
-
-
-
-
-
-
-
-
-
