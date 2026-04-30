@@ -44,7 +44,7 @@ def csv_path():
 
 def pytest_collection_modifyitems(config, items):
     """
-    adds unmarked if test is not marked
+    adds unmarked if test cis not marked
     """
     for item in items:
         # go through all markers of the test and check if there is a marker other than 'parametrize'
