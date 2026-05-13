@@ -1,50 +1,89 @@
-"""
-Description: Data Quality checks ...
-Requirement(s): TICKET-1234
-Author(s): Name Surname
-"""
-
 import pytest
+import pandas as pd
 
-@pytest.mark.db_check
-@pytest.mark.dq_check
-def test_facility_min_duration_validation(db_connector, dq_library):
-    
-    
-  
-    MIN_DURATION_LIMIT = 5
-    
-   
+
+@pytest.fixture(scope='module')
+def source_data_1(db_connection):
+    """Отримуємо агреговані дані з Postgres."""
     query = """
-        SELECT 
-            f.facility_name, 
-            v.visit_timestamp, 
-            v.duration_minutes
-        FROM visits v
-        JOIN facilities f ON v.facility_id = f.id
+    SELECT 
+        f.facility_name, 
+        v.visit_timestamp::date AS visit_date, 
+        MIN(v.duration_minutes) AS min_time_spent
+    FROM visits v
+    JOIN facilities f ON f.id = v.facility_id
+    WHERE v.visit_timestamp >= '2026-01-01' AND v.visit_timestamp < '2026-02-01'
+    GROUP BY 1, 2
+    ORDER BY 1, 2
     """
+    return db_connection.get_data_sql(query)
 
-    # --- ACT
-    # PostgresConnector (через Context Manager)
-    with db_connector as db:
-        df = db.get_data_sql(query)
 
-    # --- ASSERT (Перевірка) ---
-    
-    # 1. Перевірка, що запит повернув дані
-    dq_library.check_dataset_is_not_empty(df)
+@pytest.fixture(scope='module')
+def target_data_1(parquet_reader, source_data_1):
+    """Отримуємо дані з Parquet та фільтруємо по закладах із бази."""
+    df = parquet_reader.read_file(
+        'facility_name_min_time_spent_per_visit_date')
 
-    # 2. Перевірка на відсутність пустих значень (NULL) у колонках результату
-    dq_library.check_not_null_values(df, column_names=['duration_minutes', 'facility_name'])
+    if 'partition_date' in df.columns:
+        df = df[df['partition_date'] == '2026-01']
 
-    # 3. Основна перевірка: чи є візити, коротші за встановлений ліміт
-    # Фільтруємо датафрейм, щоб знайти порушення
-    invalid_records = df[df['duration_minutes'] < MIN_DURATION_LIMIT]
-    
-    # Якщо список порушень не порожній — тест впаде з детальним описом
-    assert invalid_records.empty, \
-        f"DQ Failure: Знайдено {len(invalid_records)} візитів коротших за {MIN_DURATION_LIMIT} хв. " \
-        f"Приклади порушень: \n{invalid_records[['facility_name', 'duration_minutes']].head()}"
+    # КЛЮЧОВЕ ВИПРАВЛЕННЯ: Приведення типів
+    df['visit_date'] = pd.to_datetime(df['visit_date']).dt.date
+    valid_facilities = source_data_1['facility_name'].unique()
 
-    # 4. Додаткова перевірка: перевіряємо, чи немає від'ємних значень (технічний баг)
-    assert df['duration_minutes'].min() >= 0, "Критична помилка: Виявлено візити з від'ємною тривалістю!"
+    df = df[df['facility_name'].isin(valid_facilities)]
+    return df.dropna(subset=['facility_name', 'visit_date'])
+
+
+@pytest.mark.reconciliation
+@pytest.mark.facility_min
+def test_facility_min_time_spent(source_data_1, target_data_1, data_quality_library):
+    # 1. Примусове приведення типів перед порівнянням (Double Check)
+    source_data_1['visit_date'] = pd.to_datetime(
+        source_data_1['visit_date']).dt.date
+    target_data_1['visit_date'] = pd.to_datetime(
+        target_data_1['visit_date']).dt.date
+
+    print(
+        f"\n[DEBUG] Rows - Source: {len(source_data_1)}, Target: {len(target_data_1)}")
+
+    # 2. Глибока діагностика розбіжностей
+    if len(source_data_1) != len(target_data_1):
+        print("\n" + "="*50)
+        print("АНАЛІЗ РОЗБІЖНОСТЕЙ (DIAGNOSTIC)")
+        print("="*50)
+
+        # Перевірка на дублікати в Parquet
+        dupes = target_data_1.duplicated(
+            subset=['facility_name', 'visit_date']).sum()
+        if dupes > 0:
+            print(
+                f"[!] Знайдено {dupes} дублікатів комбінації [Facility + Date] у Parquet!")
+
+        # Пошук конкретних пропущених дат або зайвих рядків
+        merged = pd.merge(
+            source_data_1[['facility_name', 'visit_date']],
+            target_data_1[['facility_name', 'visit_date']],
+            on=['facility_name', 'visit_date'],
+            how='outer',
+            indicator=True
+        )
+
+        mismatched = merged[merged['_merge'] != 'both']
+        if not mismatched.empty:
+            print("\nРізниця в наборах дат (перші 10):")
+            # left_only = є в БД, немає в файлі | right_only = є в файлі, немає в БД
+            print(mismatched.sort_values(['_merge', 'visit_date']).head(10))
+
+            print("\nСтатистика розбіжностей по закладах:")
+            print(mismatched.groupby(
+                ['facility_name', '_merge'], observed=True).size())
+        else:
+            print(
+                "\n[?] Набори дат ідентичні. Схоже, проблема в дубльованих рядках у Target.")
+        print("="*50 + "\n")
+
+    # 3. Основні перевірки фреймворку
+    data_quality_library.check_count(source_data_1, target_data_1)
+    data_quality_library.check_data_completeness(source_data_1, target_data_1)

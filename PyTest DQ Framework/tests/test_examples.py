@@ -1,37 +1,36 @@
 """
-Description: Data Quality checks ...
+Description: Data Quality reconciliation checks for Visits
 Requirement(s): TICKET-1234
-Author(s): Name Surname
+Author(s): Oksana Hutnyk
 """
 import pytest
 
-@pytest.fixture(scope='module')
-def source_data(db_connector):
-    """Отримуємо дані з Postgres"""
-    source_query = "SELECT * FROM visits" 
-    # Використовуємо db_connector як context manager
-    with db_connector as db:
-        return db.get_data_sql(source_query)
 
 @pytest.fixture(scope='module')
-def target_data(parquet_tool):
-    """Отримуємо дані з Parquet папки"""
-    # ФІКС 1: Передаємо тільки назву папки. 
-    # parquet_tool.read_file сам додасть базовий шлях /parquet_data/
+def source_data(db_connection):
+    """Отримуємо дані з Postgres. db_connection вже відкритий у conftest."""
+    source_query = "SELECT * FROM visits"
+    # Просто викликаємо метод, з'єднання вже керується фікстурою
+    return db_connection.get_data_sql(source_query)
+
+
+@pytest.fixture(scope='module')
+def target_data(parquet_reader):
+    """Отримуємо дані з Parquet папки за допомогою parquet_reader."""
     folder_name = 'facility_name_min_time_spent_per_visit_date'
-    return parquet_tool.read_file(folder_name)
+    return parquet_reader.read_file(folder_name)
 
-# ФІКС 2: Додаємо маркер parquet_data, щоб команда в Jenkins 
-# (pytest -m "parquet_data or example") бачила ці тести
+
 @pytest.mark.parquet_data
 @pytest.mark.example
-def test_check_dataset_is_not_empty(target_data, dq_library):
+def test_check_dataset_is_not_empty(target_data, data_quality_library):
     """Перевірка, що завантажений файл не порожній"""
-    dq_library.check_dataset_is_not_empty(target_data)
+    data_quality_library.check_dataset_is_not_empty(target_data)
+
 
 @pytest.mark.parquet_data
 @pytest.mark.example
-def test_check_count(source_data, target_data, dq_library):
+@pytest.mark.reconciliation
+def test_check_count(source_data, target_data, data_quality_library):
     """Звірка кількості записів між БД та файлом"""
-    dq_library.check_count(source_data, target_data)
-
+    data_quality_library.check_count(source_data, target_data)
