@@ -2,29 +2,23 @@ pipeline {
     agent any
 
     environment {
-        // Використовуємо одинарні лапки для безпеки, щоб уникнути передчасного розкриття пароля в Groovy
+        // Використовуємо одинарні лапки. Секрети будуть доступні через змінні оточення
         POSTGRES_SECRET = credentials('jenkins-postgres-credentials')
         
-        // НАЛАШТУВАННЯ БАЗИ
         DB_HOST = 'postgres' 
         DB_PORT = '5432'
         DB_NAME = 'mydatabase' 
-        // Використовуємо автоматичні змінні, які створює Jenkins для об'єкта credentials
-        DB_USER = "${env.POSTGRES_SECRET_USR}"
-        DB_PASS = "${env.POSTGRES_SECRET_PSW}"
         
-        // Додаємо лапки навколо шляху з пробілами
+        // PYTHONPATH з лапками для обробки пробілів
         PYTHONPATH = "${env.WORKSPACE}/PyTest DQ Framework"
-        
-        // Шлях до папки, де лежать ваші папки з паркетами
         PARQUET_BASE_PATH = '/parquet_data' 
-
     }
 
     stages {
         stage('Prepare and Run Tests') {
             steps {
                 dir('PyTest DQ Framework') {
+                    // Використовуємо змінні через $ всередині одинарних лапок для безпеки
                     sh '''
                         # 1. Створення та активація venv
                         python3 -m venv venv
@@ -34,24 +28,19 @@ pipeline {
                         pip install --upgrade pip
                         
                         # 3. Встановлення залежностей
-                        # ВИДАЛЕНО ручний перелік бібліотек, щоб не було конфлікту версій із requirements.txt
-                        # Pip автоматично встановить актуальні версії з вашого файлу
                         if [ -f requirements.txt ]; then
                             pip install -r requirements.txt
                         else
-                            # Фоллбек інсталяція з коректними версіями для Python 3.13
                             pip install pytest pytest-html pandas>=2.2.3 pyarrow>=18.0.0 sqlalchemy psycopg2-binary python-dotenv
                         fi
                         
                         # 4. Створення папки для звіту
                         mkdir -p reports
                         
-                        # 5. Запуск тестів
-                        # ФІКС: додано крапку (.) перед -m, щоб вказати поточну директорію для пошуку тестів.
-                        # Це виправляє помилку "file or directory not found: pytest"
-                        python3 -m pytest . -m "parquet_data or example" \
-                        --html=reports/dq_report.html \
-                        --self-contained-html
+                        # 5. Запуск тестів (ВИПРАВЛЕНО: прибрано зайвий sh)
+                        # Ми використовуємо змінні з credentials безпосередньо
+                        DB_USER=$POSTGRES_SECRET_USR DB_PASS=$POSTGRES_SECRET_PSW \
+                        python3 -m pytest . -m reconciliation --html=reports/dq_report.html --self-contained-html
                     '''
                 }
             }
@@ -61,7 +50,6 @@ pipeline {
     post {
         always {
             dir('PyTest DQ Framework') {
-                // Архівуємо звіти, навіть якщо тести впали
                 archiveArtifacts artifacts: 'reports/*.html', allowEmptyArchive: true
                 echo "Звіт згенеровано. Перевір вкладку Artifacts у Jenkins."
             }
