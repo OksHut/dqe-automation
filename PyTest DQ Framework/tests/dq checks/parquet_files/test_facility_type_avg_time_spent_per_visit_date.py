@@ -36,33 +36,41 @@ def target_data_2(parquet_reader):
 
     df = df[(df['visit_date'] >= start_date) & (df['visit_date'] < end_date)]
 
-    return df.dropna(subset=['facility_type', 'visit_date'])
+    # Прибираємо dropna(), щоб дозволити check_not_null_values зафіксувати помилку
+    return df
 
 
 @pytest.mark.reconciliation
 @pytest.mark.facility_avg
 def test_facility_avg_time_spent(source_data_2, target_data_2, data_quality_library):
-    # Синхронізація типів для Source (на випадок, якщо конектор повернув datetime)
+    # Синхронізація типів для Source
     source_data_2['visit_date'] = pd.to_datetime(
         source_data_2['visit_date']).dt.date
 
     print(
         f"\n[DEBUG] Rows (Jan 2026) - Source: {len(source_data_2)}, Target: {len(target_data_2)}")
 
-    # ДІАГНОСТИКА: Перевірка на дублікати перед основними ассертами
+    # ДІАГНОСТИКА: Перевірка на дублікати
     duplicates = target_data_2.duplicated(
         subset=['facility_type', 'visit_date']).sum()
     if duplicates > 0:
         print(
             f"\n[!] ALERT: Знайдено {duplicates} дублікатів у Parquet для січня!")
-        # Опційно: видаляємо дублікати для продовження тестування значень
-        # target_data_2 = target_data_2.drop_duplicates(subset=['facility_type', 'visit_date'])
 
-    # Стандартні перевірки бібліотеки
+    # --- СТАНДАРТНІ ПЕРЕВІРКИ БІБЛІОТЕКИ ---
+
+    # 1. Перевірка на наявність даних взагалі
     data_quality_library.check_dataset_is_not_empty(target_data_2)
-    data_quality_library.check_count(source_data_2, target_data_2)
-    data_quality_library.check_not_null_values(
-        target_data_2, ['facility_type', 'visit_date', 'avg_time_spent'])
 
-    # Порівняння значень (Completeness & Accuracy)
+    # 2. Перевірка на NULL (важливо перевірити до порівняння кількості рядків)
+    # Перевіряємо ключі групування та розраховану метрику
+    data_quality_library.check_not_null_values(
+        target_data_2,
+        ['facility_type', 'visit_date', 'avg_time_spent']
+    )
+
+    # 3. Кількісна звірка
+    data_quality_library.check_count(source_data_2, target_data_2)
+
+    # 4. Повне порівняння вмісту (Completeness & Accuracy)
     data_quality_library.check_data_completeness(source_data_2, target_data_2)

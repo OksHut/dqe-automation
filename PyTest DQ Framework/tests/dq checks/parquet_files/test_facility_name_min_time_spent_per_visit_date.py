@@ -33,7 +33,9 @@ def target_data_1(parquet_reader, source_data_1):
     valid_facilities = source_data_1['facility_name'].unique()
 
     df = df[df['facility_name'].isin(valid_facilities)]
-    return df.dropna(subset=['facility_name', 'visit_date'])
+    # Залишаємо вихідний датасет без жорсткого видалення рядків,
+    # щоб тест міг завалідувати наявність NULL, якщо вони туди потраплять.
+    return df
 
 
 @pytest.mark.reconciliation
@@ -73,7 +75,6 @@ def test_facility_min_time_spent(source_data_1, target_data_1, data_quality_libr
         mismatched = merged[merged['_merge'] != 'both']
         if not mismatched.empty:
             print("\nРізниця в наборах дат (перші 10):")
-            # left_only = є в БД, немає в файлі | right_only = є в файлі, немає в БД
             print(mismatched.sort_values(['_merge', 'visit_date']).head(10))
 
             print("\nСтатистика розбіжностей по закладах:")
@@ -85,5 +86,17 @@ def test_facility_min_time_spent(source_data_1, target_data_1, data_quality_libr
         print("="*50 + "\n")
 
     # 3. Основні перевірки фреймворку
+
+    # КРОК 3.1: Перевірка на порожнечу
+    data_quality_library.check_dataset_is_not_empty(target_data_1)
+
+    # КРОК 3.2: НОВА ПЕРЕВІРКА NOT NULL (валідуємо ключі та бізнес-метрику)
+    # Якщо в розрахунок мінімального часу потрапив NULL, тест відразу вкаже на це
+    data_quality_library.check_not_null_values(
+        target_data_1,
+        columns=['facility_name', 'visit_date', 'min_time_spent']
+    )
+
+    # КРОК 3.3: Кількісна та покрокова звірка
     data_quality_library.check_count(source_data_1, target_data_1)
     data_quality_library.check_data_completeness(source_data_1, target_data_1)

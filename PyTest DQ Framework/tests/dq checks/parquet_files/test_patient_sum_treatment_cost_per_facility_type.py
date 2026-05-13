@@ -29,15 +29,11 @@ def target_data_3(parquet_reader):
     df = parquet_reader.read_file(
         'patient_sum_treatment_cost_per_facility_type')
 
-    # Фільтрація за датою, якщо вона присутня в файлі (наприклад, через visit_date)
-    # Якщо файл агрегований без дат, використовуємо лише фільтрацію за наявними колонками
     if 'partition_date' in df.columns:
         df = df[df['partition_date'] == '2026-01']
 
-    # Обов'язково видаляємо записи, де full_name є NULL (виходячи з вашого попереднього багу)
-    # Це допоможе виявити реальну кількість пацієнтів, які пройшли успішну міграцію
-    df = df.dropna(subset=['full_name'])
-
+    # ВАЖЛИВО: Ми більше не видаляємо NULL локально через .dropna().
+    # Ми хочемо, щоб бібліотека DQ виявила їх і видала помилку у звіті.
     return df
 
 
@@ -47,21 +43,27 @@ def test_patient_sum_costs(source_data_3, target_data_3, data_quality_library):
     print(
         f"\n[DEBUG] Rows (Jan 2026) - Source: {len(source_data_3)}, Target: {len(target_data_3)}")
 
-    # ДІАГНОСТИКА: Перевірка на дублікати пацієнтів всередині одного типу закладу
+    # ДІАГНОСТИКА: Перевірка на дублікати
     duplicates = target_data_3.duplicated(
         subset=['facility_type', 'full_name']).sum()
     if duplicates > 0:
         print(
             f"\n[!] ALERT: Знайдено {duplicates} дублікатів пацієнтів у Parquet!")
 
-    # Стандартні перевірки
+    # --- СТАНДАРТНІ ПЕРЕВІРКИ БІБЛІОТЕКИ ---
+
+    # 1. Перевірка на наявність даних
     data_quality_library.check_dataset_is_not_empty(target_data_3)
 
-    # Цей ассерт покаже, чи всі 120 пацієнтів потрапили у файл без втрати імен
+    # 2. Перевірка на NULL (Критично для full_name та вартості лікування)
+    # Тепер, якщо в даних будуть порожні імена, тест впаде саме тут.
+    data_quality_library.check_not_null_values(
+        target_data_3,
+        ['facility_type', 'full_name', 'sum_treatment_cost']
+    )
+
+    # 3. Кількісна звірка (Row Count Completeness)
     data_quality_library.check_count(source_data_3, target_data_3)
 
-    data_quality_library.check_not_null_values(
-        target_data_3, ['facility_type', 'full_name', 'sum_treatment_cost'])
-
-    # Перевірка точності сум (Accuracy)
+    # 4. Перевірка точності сум та повноти записів (Accuracy)
     data_quality_library.check_data_completeness(source_data_3, target_data_3)
